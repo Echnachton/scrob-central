@@ -1,0 +1,19 @@
+services:
+  mongodb:
+    image: mongodb/mongodb-community-server:8.0-ubi8-slim
+    volumes:
+      - mongodb_data:/data/db
+
+  scrob-central:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    image: scrob-central
+    depends_on:
+      - mongodb
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017
+
+volumes:
+  mongodb_data:
