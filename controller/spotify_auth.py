@@ -3,7 +3,7 @@ from fastapi.routing import RedirectResponse
 import os
 from urllib.parse import urlencode
 import secrets
-from service.spotify_authenticator import exchange_spotify_tokens
+from service.spotify_authenticator import exchange_spotify_token
 
 REDIRECT_URL = "/auth/spotify/callback"
 AUTH_COOKIE_KEY = "spotify_oauth_state"
@@ -46,11 +46,9 @@ def callback(request: Request, code: str | None = None, state: str | None = None
   if not state or not cookie_state or state != cookie_state:
     raise HTTPException(status_code = 400, detail = "Invalid OAuth state")
   
-  exchange_spotify_tokens(
+  exchange_spotify_token(
     code = code,
     redirect_url = REDIRECT_URL,
-    client_id = client_id,
-    client_secret = client_secret
   )
 
   response = RedirectResponse(url="/")
