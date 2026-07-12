@@ -49,7 +49,8 @@ def scrobble_job():
   
   if status_code == 429:
     # TODO: Implement back-off
-    skip()
+    print("Spotify rate limit (429) — stopping scrobble worker")
+    stop_scrobble_job()
     return
 
   response.raise_for_status()
