@@ -8,7 +8,7 @@ RUN uv sync --frozen
 COPY . .
 RUN uv sync --frozen
 
-FROM ghcr.io/astral-sh/uv:python3.14-dhi
+FROM ghcr.io/astral-sh/uv:python3.14-trixie-slim
 
 WORKDIR /app
 
