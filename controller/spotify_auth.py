@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 import secrets
 from service.spotify_authenticator import exchange_spotify_token
 
-REDIRECT_URL = "/auth/spotify/callback"
+REDIRECT_URL = "http://127.0.0.1:8000/auth/spotify/callback"
 AUTH_COOKIE_KEY = "spotify_oauth_state"
 
 client_id = os.getenv("SPOTIFY_CLIENT_ID")
@@ -17,15 +17,16 @@ router = APIRouter(prefix="/auth/spotify", tags=["spotify-auth"])
 def login():
   state = secrets.token_urlsafe(32)
 
+  params = urlencode({
+    "client_id": client_id,
+    "response_type": "code",
+    "redirect_uri": REDIRECT_URL,
+    "scope": "user-read-currently-playing",
+    "state": state
+    })
+
   response = RedirectResponse(
-    url = "https://accounts.spotify.com/authorize",
-    params = urlencode({
-      "client_id": client_id,
-      "response_type": "code",
-      "redirect_uri": REDIRECT_URL,
-      "scope": "user-read-currently-playing",
-      "state": state
-    }),
+    url = f"https://accounts.spotify.com/authorize?{params}",
     status_code = 302
   )
 

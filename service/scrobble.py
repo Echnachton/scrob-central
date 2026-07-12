@@ -1,4 +1,3 @@
-import signal
 import time
 from unittest import skip
 import httpx
@@ -16,9 +15,6 @@ def stop_scrobble_job():
   return
 
 def start_scrobble_job():
-  signal.signal(signal.SIGTERM, stop_scrobble_job)
-  signal.signal(signal.SIGINT, stop_scrobble_job)
-
   while _is_worker_running:
     start = time.monotonic()
     try:
@@ -45,7 +41,7 @@ def scrobble_job():
     status_code = response.status_code
   
   if status_code == 403:
-    response.raise_for_status()
+    print("Http 403. Log in first.")
   
   if status_code == 429:
     # TODO: Implement back-off
@@ -63,5 +59,6 @@ def scrobble_job():
   
   try:
     mongo_conn.now_playing.insert_one(response.json())
+    print(response.json())
   except Exception as e:
         raise Exception("The following error occurred: ", e)
