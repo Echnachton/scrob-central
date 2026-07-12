@@ -3,6 +3,8 @@ services:
     image: mongodb/mongodb-community-server:8.0-ubi8-slim
     volumes:
       - mongodb_data:/data/db
+    ports:
+      - "27017:27017"
 
   scrob-central:
     build:
@@ -14,6 +16,10 @@ services:
       - mongodb
     environment:
       MONGODB_URI: mongodb://mongodb:27017
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
 
 volumes:
   mongodb_data:
