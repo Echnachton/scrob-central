@@ -13,3 +13,22 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "sqlalchemy>=2.0.51",
 ]
+
+[dependency-groups]
+dev = [
+    "datamodel-code-generator>=0.68.1",
+]
+
+[tool.datamodel-codegen]
+extra-fields = "ignore"
+field-constraints = true
+formatters = ["isort"]
+input = "schema/spotify-openapi.yaml"
+input-file-type = "openapi"
+output = "schema/spotify/generated.py"
+output-model-type = "pydantic_v2.BaseModel"
+strict-nullable = true
+target-python-version = "3.14"
+use-schema-description = true
+use-standard-collections = true
+use-union-operator = true

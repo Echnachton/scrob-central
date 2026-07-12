@@ -2,6 +2,7 @@ import time
 import httpx
 from service.mongodb import get_db_connection
 from service.spotify_authenticator import get_valid_access_token, handle_401_response
+from schema import CurrentlyPlayingObject
 
 NOW_PLAYING_TRACKING_ID = "now_playing_tracking_id"
 SPOTIFY_ENDPOINT = "https://api.spotify.com/v1/me/player/currently-playing"
@@ -42,6 +43,7 @@ def scrobble_job():
   
   if status_code == 403:
     print("Http 403. Log in first.")
+    return
   
   if status_code == 429:
     # TODO: Implement back-off
@@ -55,9 +57,10 @@ def scrobble_job():
 
   if status_code == 204:
     # TODO: Trigger an Silence Event
+    mongo_conn.now_playing.delete_one({"_id":NOW_PLAYING_TRACKING_ID})
     return
   
-  now_playing = response.json()
+  now_playing = CurrentlyPlayingObject.model_validate(response.json())
   now_playing["_id"] = NOW_PLAYING_TRACKING_ID
   
   try:
