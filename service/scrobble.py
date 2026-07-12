@@ -1,9 +1,9 @@
 import time
-from unittest import skip
 import httpx
 from service.mongodb import get_db_connection
 from service.spotify_authenticator import get_valid_access_token, handle_401_response
 
+NOW_PLAYING_TRACKING_ID = "now_playing_tracking_id"
 SPOTIFY_ENDPOINT = "https://api.spotify.com/v1/me/player/currently-playing"
 POLL_INTERVAL = 30
 
@@ -57,8 +57,10 @@ def scrobble_job():
     # TODO: Trigger an Silence Event
     return
   
+  now_playing = response.json()
+  now_playing["_id"] = NOW_PLAYING_TRACKING_ID
+  
   try:
-    mongo_conn.now_playing.insert_one(response.json())
-    print(response.json())
+    mongo_conn.now_playing.replace_one({"_id":NOW_PLAYING_TRACKING_ID}, now_playing, upsert = True)
   except Exception as e:
         raise Exception("The following error occurred: ", e)
