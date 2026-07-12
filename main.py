@@ -6,7 +6,6 @@ import signal
 from service.scrobble import start_scrobble_job, stop_scrobble_job
 
 def main():
-    print("Hello from scrob-central!")
     signal.signal(signal.SIGTERM, lambda *_: stop_scrobble_job())
     signal.signal(signal.SIGINT, lambda *_: stop_scrobble_job())
     threading.Thread(target=start_scrobble_job, daemon=True).start()
