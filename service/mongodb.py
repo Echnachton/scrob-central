@@ -1,5 +1,6 @@
 from pymongo import MongoClient
 import os
+import logging
 
 CONNECTION_STRING = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
 
@@ -14,7 +15,7 @@ def get_db_connection():
         client = MongoClient(CONNECTION_STRING)
 
         client.admin.command("ping")
-        print("Connected successfully")
+        logging.info("Connected successfully")
 
         _db = client["scrob_central"]
         return _db
