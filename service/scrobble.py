@@ -69,6 +69,7 @@ def scrobble_job():
     now_playing = ScrobbleCurrentlyPlaying.model_validate(now_playing_doc)
   except Exception:
     logger.error("Failed to validate now playing")
+    return
 
   handle_scrobble(now_playing, now_playing_doc)
   handle_now_playing(now_playing_doc)
@@ -82,7 +83,7 @@ def get_should_update_scrobble_state(now_playing: ScrobbleCurrentlyPlaying):
 
   latest_scrobble_entry = mongo_conn.scrobble.find_one(
     {"item.id": now_playing.item.id},
-    sort=[("timestamp, -1")]
+    sort=[("timestamp", -1)]
   )
 
   last_scrobbled = (
