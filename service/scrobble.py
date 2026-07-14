@@ -70,22 +70,38 @@ def scrobble_job():
   except Exception:
     logger.error("Failed to validate now playing")
 
+  should_scrobble = get_scrobble_state(now_playing)
+  should_update_scrobble = get_should_update_scrobble_state(now_playing)
+  handle_scrobble(should_scrobble, should_update_scrobble, now_playing)
+  handle_now_playing(now_playing_doc)
+
+def get_scrobble_state(data: ScrobbleCurrentlyPlaying):
+  percentage_complete = round(data.progress_ms / data.item.duration_ms * 100)
+  return percentage_complete > SCROBBLE_COMPLETE_PERCENTAGE
+
+def get_should_update_scrobble_state(now_playing: ScrobbleCurrentlyPlaying):
+  mongo_conn = get_db_connection()
+
   latest_scrobble_entry = mongo_conn.scrobble.find_one(
     {"item.id": now_playing.item.id},
     sort=[("timestamp, -1")]
   )
+
   last_scrobbled = (
     ScrobbleCurrentlyPlaying.model_validate(latest_scrobble_entry)
     if latest_scrobble_entry is not None
     else None
   )
-  should_scrobble = get_scrobble_state(now_playing)
-  should_update_scrobble = (
+
+  return (
     last_scrobbled is not None
     and now_playing.progress_ms is not None
     and last_scrobbled.progress_ms < now_playing.progress_ms
   )
 
+def handle_scrobble(should_scrobble: bool, should_update_scrobble: bool, now_playing: ScrobbleCurrentlyPlaying):
+  mongo_conn = get_db_connection()
+  
   if should_scrobble:
     if should_update_scrobble:
       try:
@@ -102,15 +118,14 @@ def scrobble_job():
       except Exception:
         logger.error("Failed to insert scrobble")
         raise
-      
+
+def handle_now_playing(now_playing_doc: dict):
+  mongo_conn = get_db_connection()
+
   now_playing_doc["_id"] = NOW_PLAYING_TRACKING_ID
   
   try:
-    mongo_conn.now_playing.replace_one({"_id":NOW_PLAYING_TRACKING_ID}, now_playing_doc, upsert = True)
+    mongo_conn.now_playing.replace_one({"_id":NOW_PLAYING_TRACKING_ID}, now_playing_doc, upsert = True) 
   except Exception:
     logger.error("Failed to update now playing")
     raise
-
-def get_scrobble_state(data: ScrobbleCurrentlyPlaying):
-  percentage_complete = round(data.progress_ms / data.item.duration_ms * 100)
-  return percentage_complete > SCROBBLE_COMPLETE_PERCENTAGE
