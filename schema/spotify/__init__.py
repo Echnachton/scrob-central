@@ -1,11 +1,5 @@
-from schema.spotify.generated import (
-    CurrentlyPlayingObject,
-    EpisodeObject,
-    TrackObject,
-)
+from schema.spotify.playback import ScrobbleCurrentlyPlaying
 
 __all__ = [
-    "CurrentlyPlayingObject",
-    "EpisodeObject",
-    "TrackObject",
+    "ScrobbleCurrentlyPlaying",
 ]

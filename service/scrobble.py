@@ -1,13 +1,16 @@
 import time
+import logging
 import httpx
 from service.mongodb import get_db_connection
 from service.spotify_authenticator import get_valid_access_token, handle_401_response
-from schema import CurrentlyPlayingObject
+from schema import ScrobbleCurrentlyPlaying
 
 NOW_PLAYING_TRACKING_ID = "now_playing_tracking_id"
 SPOTIFY_ENDPOINT = "https://api.spotify.com/v1/me/player/currently-playing"
 POLL_INTERVAL = 30
+SCROBBLE_COMPLETE_PERCENTAGE = 80
 
+logger = logging.getLogger(__name__)
 _is_worker_running = True
 
 def stop_scrobble_job():
@@ -20,8 +23,9 @@ def start_scrobble_job():
     start = time.monotonic()
     try:
       scrobble_job()
-    except Exception as e:
-      print(f"scrobble_job failed: {e}")
+    except Exception:
+      logger.info("scrobble_job failed")
+      raise
 
     elapsed = time.monotonic() - start
     time.sleep(max(0, POLL_INTERVAL - elapsed))
@@ -42,12 +46,12 @@ def scrobble_job():
     status_code = response.status_code
   
   if status_code == 403:
-    print("Http 403. Log in first.")
+    logger.warning("Http 403. Log in first.")
     return
   
   if status_code == 429:
     # TODO: Implement back-off
-    print("Spotify rate limit (429) — stopping scrobble worker")
+    logger.warning("Spotify rate limit (429) — stopping scrobble worker")
     stop_scrobble_job()
     return
 
@@ -60,10 +64,53 @@ def scrobble_job():
     mongo_conn.now_playing.delete_one({"_id":NOW_PLAYING_TRACKING_ID})
     return
   
-  now_playing = CurrentlyPlayingObject.model_validate(response.json())
-  now_playing["_id"] = NOW_PLAYING_TRACKING_ID
+  try:
+    now_playing_doc = response.json()
+    now_playing = ScrobbleCurrentlyPlaying.model_validate(now_playing_doc)
+  except Exception:
+    logger.error("Failed to validate now playing")
+
+  latest_scrobble_entry = mongo_conn.scrobble.find_one(
+    {"item.id": now_playing.item.id},
+    sort=[("timestamp, -1")]
+  )
+  last_scrobbled = (
+    ScrobbleCurrentlyPlaying.model_validate(latest_scrobble_entry)
+    if latest_scrobble_entry is not None
+    else None
+  )
+  should_scrobble = get_scrobble_state(now_playing)
+  should_update_scrobble = (
+    last_scrobbled is not None
+    and now_playing.progress_ms is not None
+    and last_scrobbled.progress_ms < now_playing.progress_ms
+  )
+
+  if should_scrobble:
+    if should_update_scrobble:
+      try:
+        mongo_conn.scrobble.update_one(
+          {"item.id": now_playing.item.id},
+          {"$set": {"progress_ms": now_playing.progress_ms}},
+        )
+      except Exception:
+        logger.error("Failed to update scrobble")
+        raise
+    else:
+      try:
+        mongo_conn.scrobble.insert_one(now_playing_doc)
+      except Exception:
+        logger.error("Failed to insert scrobble")
+        raise
+      
+  now_playing_doc["_id"] = NOW_PLAYING_TRACKING_ID
   
   try:
-    mongo_conn.now_playing.replace_one({"_id":NOW_PLAYING_TRACKING_ID}, now_playing, upsert = True)
-  except Exception as e:
-        raise Exception("The following error occurred: ", e)
+    mongo_conn.now_playing.replace_one({"_id":NOW_PLAYING_TRACKING_ID}, now_playing_doc, upsert = True)
+  except Exception:
+    logger.error("Failed to update now playing")
+    raise
+
+def get_scrobble_state(data: ScrobbleCurrentlyPlaying):
+  percentage_complete = round(data.progress_ms / data.item.duration_ms * 100)
+  return percentage_complete > SCROBBLE_COMPLETE_PERCENTAGE
