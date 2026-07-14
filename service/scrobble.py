@@ -22,13 +22,13 @@ def start_scrobble_job():
   while _is_worker_running:
     start = time.monotonic()
     try:
-      scrobble_job()
+      backoff = scrobble_job() or 0
     except Exception:
       logger.info("scrobble_job failed")
       raise
 
     elapsed = time.monotonic() - start
-    time.sleep(max(0, POLL_INTERVAL - elapsed))
+    time.sleep(max(0, max(POLL_INTERVAL, backoff) - elapsed))
   return
 
 def scrobble_job():
@@ -50,10 +50,7 @@ def scrobble_job():
     return
   
   if status_code == 429:
-    # TODO: Implement back-off
-    logger.warning("Spotify rate limit (429) — stopping scrobble worker")
-    stop_scrobble_job()
-    return
+    return handle_429_response(response)
 
   response.raise_for_status()
   
@@ -131,3 +128,8 @@ def handle_now_playing(now_playing_doc: dict):
   except Exception:
     logger.error("Failed to update now playing")
     raise
+
+def handle_429_response(response: httpx.Response):
+  retry_after = int(response.headers.get("Retry-After", 60))
+  logger.warning(f"Spotify rate limit (429) — retrying in {retry_after} seconds")
+  return retry_after
