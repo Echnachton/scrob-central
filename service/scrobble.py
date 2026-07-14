@@ -70,13 +70,11 @@ def scrobble_job():
   except Exception:
     logger.error("Failed to validate now playing")
 
-  should_scrobble = get_scrobble_state(now_playing)
-  should_update_scrobble = get_should_update_scrobble_state(now_playing)
-  handle_scrobble(should_scrobble, should_update_scrobble, now_playing)
+  handle_scrobble(now_playing, now_playing_doc)
   handle_now_playing(now_playing_doc)
 
-def get_scrobble_state(data: ScrobbleCurrentlyPlaying):
-  percentage_complete = round(data.progress_ms / data.item.duration_ms * 100)
+def get_scrobble_state(now_playing: ScrobbleCurrentlyPlaying):
+  percentage_complete = round(now_playing.progress_ms / now_playing.item.duration_ms * 100)
   return percentage_complete > SCROBBLE_COMPLETE_PERCENTAGE
 
 def get_should_update_scrobble_state(now_playing: ScrobbleCurrentlyPlaying):
@@ -99,8 +97,11 @@ def get_should_update_scrobble_state(now_playing: ScrobbleCurrentlyPlaying):
     and last_scrobbled.progress_ms < now_playing.progress_ms
   )
 
-def handle_scrobble(should_scrobble: bool, should_update_scrobble: bool, now_playing: ScrobbleCurrentlyPlaying):
+def handle_scrobble(now_playing: ScrobbleCurrentlyPlaying, now_playing_doc: dict):
   mongo_conn = get_db_connection()
+
+  should_scrobble = get_scrobble_state(now_playing)
+  should_update_scrobble = get_should_update_scrobble_state(now_playing)
   
   if should_scrobble:
     if should_update_scrobble:
