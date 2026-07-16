@@ -1,6 +1,6 @@
 services:
   mongodb:
-    image: mongodb/mongodb-community-server:8.0-ubi8-slim
+    image: mongodb/mongodb-community-server:8.0.4-ubi8
     volumes:
       - mongodb_data:/data/db
     ports:
