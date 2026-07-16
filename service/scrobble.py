@@ -1,9 +1,11 @@
+import asyncio
 import time
 import logging
 import httpx
 from service.mongodb import get_db_connection
-from service.spotify_authenticator import get_valid_access_token, handle_401_response
+from service.spotify_authenticator import get_valid_access_token_async, handle_401_response_async
 from schema import ScrobbleCurrentlyPlaying
+from util.with_async_io_thread import with_asyncio_thread_async
 
 NOW_PLAYING_TRACKING_ID = "now_playing_tracking_id"
 SPOTIFY_ENDPOINT = "https://api.spotify.com/v1/me/player/currently-playing"
@@ -18,31 +20,32 @@ def stop_scrobble_job():
   _is_worker_running = False
   return
 
-def start_scrobble_job():
+async def start_scrobble_job_async():
   while _is_worker_running:
     start = time.monotonic()
     try:
-      backoff = scrobble_job() or 0
+      backoff = await scrobble_job_async() or 0
     except Exception:
       logger.info("scrobble_job failed")
       raise
 
     elapsed = time.monotonic() - start
-    time.sleep(max(0, max(POLL_INTERVAL, backoff) - elapsed))
+    await asyncio.sleep(max(0, max(POLL_INTERVAL, backoff) - elapsed))
   return
 
-def scrobble_job():
-  token = get_valid_access_token()
+async def scrobble_job_async():
+  token = await get_valid_access_token_async()
 
-  response = httpx.get(
-    SPOTIFY_ENDPOINT,
-    headers={"Authorization": f"Bearer {token}"},
-  )
+  async with httpx.AsyncClient() as client:
+    response = await client.get(
+      SPOTIFY_ENDPOINT,
+      headers={"Authorization": f"Bearer {token}"},
+    )
 
   status_code = response.status_code
 
   if status_code == 401:
-    response = handle_401_response()
+    response = await handle_401_response_async()
     status_code = response.status_code
   
   if status_code == 403:
@@ -58,7 +61,7 @@ def scrobble_job():
 
   if status_code == 204:
     # TODO: Trigger an Silence Event
-    mongo_conn.now_playing.delete_one({"_id":NOW_PLAYING_TRACKING_ID})
+    await with_asyncio_thread_async(lambda: mongo_conn.now_playing.delete_one({"_id":NOW_PLAYING_TRACKING_ID}))
     return
   
   try:
@@ -68,20 +71,20 @@ def scrobble_job():
     logger.error("Failed to validate now playing")
     return
 
-  handle_scrobble(now_playing, now_playing_doc)
-  handle_now_playing(now_playing_doc)
+  await handle_scrobble_async(now_playing, now_playing_doc)
+  await handle_now_playing_async(now_playing_doc)
 
 def get_scrobble_state(now_playing: ScrobbleCurrentlyPlaying):
   percentage_complete = round(now_playing.progress_ms / now_playing.item.duration_ms * 100)
   return percentage_complete > SCROBBLE_COMPLETE_PERCENTAGE
 
-def get_should_update_scrobble_state(now_playing: ScrobbleCurrentlyPlaying):
+async def get_should_update_scrobble_state_async(now_playing: ScrobbleCurrentlyPlaying):
   mongo_conn = get_db_connection()
 
-  latest_scrobble_entry = mongo_conn.scrobble.find_one(
+  latest_scrobble_entry = await with_asyncio_thread_async(lambda: mongo_conn.scrobble.find_one(
     {"item.id": now_playing.item.id},
     sort=[("timestamp", -1)]
-  )
+  ))
 
   last_scrobbled = (
     ScrobbleCurrentlyPlaying.model_validate(latest_scrobble_entry)
@@ -95,36 +98,36 @@ def get_should_update_scrobble_state(now_playing: ScrobbleCurrentlyPlaying):
     and last_scrobbled.progress_ms < now_playing.progress_ms
   )
 
-def handle_scrobble(now_playing: ScrobbleCurrentlyPlaying, now_playing_doc: dict):
+async def handle_scrobble_async(now_playing: ScrobbleCurrentlyPlaying, now_playing_doc: dict):
   mongo_conn = get_db_connection()
 
   should_scrobble = get_scrobble_state(now_playing)
-  should_update_scrobble = get_should_update_scrobble_state(now_playing)
+  should_update_scrobble = await get_should_update_scrobble_state_async(now_playing)
   
   if should_scrobble:
     if should_update_scrobble:
       try:
-        mongo_conn.scrobble.update_one(
+        await with_asyncio_thread_async(lambda: mongo_conn.scrobble.update_one(
           {"item.id": now_playing.item.id},
           {"$set": {"progress_ms": now_playing.progress_ms}},
-        )
+        ))
       except Exception:
         logger.error("Failed to update scrobble")
         raise
     else:
       try:
-        mongo_conn.scrobble.insert_one(now_playing_doc)
+        await with_asyncio_thread_async(lambda: mongo_conn.scrobble.insert_one(now_playing_doc))
       except Exception:
         logger.error("Failed to insert scrobble")
         raise
 
-def handle_now_playing(now_playing_doc: dict):
+async def handle_now_playing_async(now_playing_doc: dict):
   mongo_conn = get_db_connection()
 
   now_playing_doc["_id"] = NOW_PLAYING_TRACKING_ID
   
   try:
-    mongo_conn.now_playing.replace_one({"_id":NOW_PLAYING_TRACKING_ID}, now_playing_doc, upsert = True) 
+    await with_asyncio_thread_async(lambda: mongo_conn.now_playing.replace_one({"_id":NOW_PLAYING_TRACKING_ID}, now_playing_doc, upsert = True)) 
   except Exception:
     logger.error("Failed to update now playing")
     raise
@@ -133,3 +136,4 @@ def handle_429_response(response: httpx.Response):
   retry_after = int(response.headers.get("Retry-After", 60))
   logger.warning(f"Spotify rate limit (429) — retrying in {retry_after} seconds")
   return retry_after
+

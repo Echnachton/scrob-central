@@ -1,10 +1,11 @@
 import uvicorn
+import signal
+import logging
+import asyncio
 from fastapi import FastAPI
 from controller import register_routes
-import threading
-import signal
-from service.scrobble import start_scrobble_job, stop_scrobble_job
-import logging
+from service.scrobble import start_scrobble_job_async, stop_scrobble_job
+from contextlib import asynccontextmanager
 
 def main():
     logging.basicConfig(
@@ -14,9 +15,13 @@ def main():
 
     signal.signal(signal.SIGTERM, lambda *_: stop_scrobble_job())
     signal.signal(signal.SIGINT, lambda *_: stop_scrobble_job())
-    threading.Thread(target=start_scrobble_job, daemon=True).start()
     
-    app = FastAPI()
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        app.state.scrobble_task = asyncio.create_task(start_scrobble_job_async())
+        yield
+    
+    app = FastAPI(lifespan=lifespan)
     register_routes(app)
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
